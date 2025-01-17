@@ -33,6 +33,7 @@ import java.nio.charset.UnsupportedCharsetException
 import android.webkit.URLUtil
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothClass
 
 /** FlutterStarPrntPlugin */
 public class FlutterStarPrntPlugin : FlutterPlugin, MethodCallHandler {
@@ -261,31 +262,60 @@ public class FlutterStarPrntPlugin : FlutterPlugin, MethodCallHandler {
   }
 
   private fun getPortDiscovery(interfaceName: String): MutableList<Map<String, String>> {
-    val arrayDiscovery: Array<PortInfo>
     val arrayPairedDevices = mutableListOf<Map<String, String>>()
 
     if (interfaceName == "Bluetooth" || interfaceName == "All") {
-      arrayDiscovery = StarIOPort.searchPrinter("BT:")
-      
-      // Get all paired Bluetooth devices
-      val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-      val pairedDevices = bluetoothAdapter?.bondedDevices
+        try {
+            // Get all paired Bluetooth devices
+            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+            val pairedDevices = bluetoothAdapter?.bondedDevices
 
-      pairedDevices?.forEach { device ->
-        // Check if device name matches Star printer patterns
-        if (device.name?.contains("Star Micronics", ignoreCase = true) == true || 
-            device.name?.contains("SM-T300", ignoreCase = true) == true) {
-          
-          val port = "BT:" + device.address
-          val map = mutableMapOf<String, String>()
-          map["portName"] = port
-          map["macAddress"] = device.address
-          map["modelName"] = "BT:" + device.name
-          arrayPairedDevices.add(map)
+            Log.d("FlutterStarPrnt", "Found ${pairedDevices?.size} paired devices")
+            
+            pairedDevices?.forEach { device ->
+                Log.d("FlutterStarPrnt", "Checking device: ${device.name} (${device.address})")
+                
+                // Check if device name matches Star printer patterns
+                val isStarPrinter = device.name?.contains("Star Micronics", ignoreCase = true) == true || 
+                                  device.name?.contains("SM-T300", ignoreCase = true) == true
+                
+                if (isStarPrinter) {
+                    Log.d("FlutterStarPrnt", "Found Star printer: ${device.name}")
+                    
+                    try {
+                        // Try to get remote device class
+                        val deviceClass = device.bluetoothClass
+                        val isMajorPrinter = deviceClass?.majorDeviceClass == BluetoothClass.Device.Major.IMAGING
+                        val isActive = device.bondState == BluetoothDevice.BOND_BONDED
+                        
+                        Log.d("FlutterStarPrnt", "Printer status - Major: $isMajorPrinter, Active: $isActive")
+                        
+                        val port = "BT:" + device.address
+                        val map = mutableMapOf<String, String>()
+                        map["portName"] = port
+                        map["macAddress"] = device.address
+                        map["modelName"] = "BT:" + device.name
+                        map["isActive"] = isActive.toString()
+                        
+                        // Add active devices first
+                        if (isActive) {
+                            arrayPairedDevices.add(0, map)
+                        } else {
+                            arrayPairedDevices.add(map)
+                        }
+                        
+                        Log.d("FlutterStarPrnt", "Added printer to list: $map")
+                    } catch (e: Exception) {
+                        Log.e("FlutterStarPrnt", "Error checking device ${device.name}", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("FlutterStarPrnt", "Error during port discovery", e)
         }
-      }
     }
     
+    Log.d("FlutterStarPrnt", "Returning ${arrayPairedDevices.size} printers")
     return arrayPairedDevices
   }
 
