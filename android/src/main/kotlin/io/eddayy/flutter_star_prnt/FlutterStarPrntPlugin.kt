@@ -31,6 +31,8 @@ import java.io.IOException
 import java.nio.charset.Charset
 import java.nio.charset.UnsupportedCharsetException
 import android.webkit.URLUtil
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 
 /** FlutterStarPrntPlugin */
 public class FlutterStarPrntPlugin : FlutterPlugin, MethodCallHandler {
@@ -258,58 +260,33 @@ public class FlutterStarPrntPlugin : FlutterPlugin, MethodCallHandler {
         result)
   }
 
-  private fun getPortDiscovery(@NonNull interfaceName: String): MutableList<Map<String, String>> {
-    val arrayDiscovery: MutableList<PortInfo> = mutableListOf<PortInfo>()
-    val arrayPorts: MutableList<Map<String, String>> = mutableListOf<Map<String, String>>()
+  private fun getPortDiscovery(interfaceName: String): MutableList<Map<String, String>> {
+    val arrayDiscovery: Array<PortInfo>
+    val arrayPairedDevices = mutableListOf<Map<String, String>>()
 
     if (interfaceName == "Bluetooth" || interfaceName == "All") {
-      for (portInfo in StarIOPort.searchPrinter("BT:")) {
-        arrayDiscovery.add(portInfo)
-      }
-    }
-    if (interfaceName == "LAN" || interfaceName == "All") {
-      for (port in StarIOPort.searchPrinter("TCP:")) {
-        arrayDiscovery.add(port)
-      }
-    }
-    if (interfaceName == "USB" || interfaceName == "All") {
-      try {
-        for (port in StarIOPort.searchPrinter("USB:", applicationContext)) {
-          arrayDiscovery.add(port)
-        }
-      } catch (e: Exception) {
-        Log.e("FlutterStarPrnt", "usb not conncted", e)
-      }
-    }
-    for (discovery in arrayDiscovery) {
-      val port: MutableMap<String, String> = mutableMapOf<String, String>()
+      arrayDiscovery = StarIOPort.searchPrinter("BT:")
+      
+      // Get all paired Bluetooth devices
+      val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+      val pairedDevices = bluetoothAdapter?.bondedDevices
 
-      if (discovery.getPortName().startsWith("BT:"))
-          port.put("portName", "BT:" + discovery.getMacAddress())
-      else port.put("portName", discovery.getPortName())
-
-      if (!discovery.getMacAddress().equals("")) {
-
-        port.put("macAddress", discovery.getMacAddress())
-
-        if (discovery.getPortName().startsWith("BT:")) {
-          port.put("modelName", discovery.getPortName())
-        } else if (!discovery.getModelName().equals("")) {
-          port.put("modelName", discovery.getModelName())
-        }
-      } else if (interfaceName.equals("USB") || interfaceName.equals("All")) {
-        if (!discovery.getModelName().equals("")) {
-          port.put("modelName", discovery.getModelName())
-        }
-        if (!discovery.getUSBSerialNumber().equals(" SN:")) {
-          port.put("USBSerialNumber", discovery.getUSBSerialNumber())
+      pairedDevices?.forEach { device ->
+        // Check if device name matches Star printer patterns
+        if (device.name?.contains("Star Micronics", ignoreCase = true) == true || 
+            device.name?.contains("SM-T300", ignoreCase = true) == true) {
+          
+          val port = "BT:" + device.address
+          val map = mutableMapOf<String, String>()
+          map["portName"] = port
+          map["macAddress"] = device.address
+          map["modelName"] = "BT:" + device.name
+          arrayPairedDevices.add(map)
         }
       }
-
-      arrayPorts.add(port)
     }
-
-    return arrayPorts
+    
+    return arrayPairedDevices
   }
 
   private fun getPortSettingsOption(
